@@ -1,0 +1,58 @@
+#!/usr/bin/expect -f                                                                                                                    
+
+# Set variables                                                                                                                         
+set f [open "/etc/credentials.config"]
+set login [split [read $f] "\n"]
+close $f
+
+set c 0
+foreach line $login {
+    if { $c == 0 } {
+        set username $line
+    } else {
+        regsub -all {\s} $line {} password
+    }
+    set c "[expr $c + 1]"
+}
+
+set hostname [lindex $argv 0]
+set newuser [lindex $argv 1]
+set enablepassword [lindex $argv 2]
+
+# Display log to user: NO=0 / Yes=1                                                                                                     
+ log_user 1
+# Log results                                                                                                                           
+ log_file -a -noappend /opt/scanme/logfiles/IosPasswordChangeResults.log
+
+# Announce which device we are working on and at what time                                                                              
+ send_user "\n"
+ send_user "\n"
+send_user ">>>>>  Working on $hostname @ [exec date] <<<<<\n\n"
+ send_user "\n"
+
+# Don't check keys                                                                                                                      
+ spawn ssh -o StrictHostKeyChecking=no $username\@$hostname
+
+# Allow this script to handle ssh connection issues                                                                                     
+expect {
+    timeout { send_user "\nTimeout Exceeded - Check $hostname\n"; exit 1 }
+    eof { send_user "\nSSH Connection To $hostname Failed\n"; exit 1 }
+    "*#" {}
+    "*assword:" {
+ send "$password\n"
+    }
+}
+
+# Enter Configuration mode                                                                                                              
+expect "#"
+send "conf t\n"
+expect "(config)#"
+send "username $newuser\n"
+expect "(config-un)#"
+send "password 0 $enablepassword\n"
+send "group root-system\n"
+send "commit\n"
+send "exit\n"
+expect "#"
+send_user "\n>>>>> Config Completed on $hostname @ [exec date] <<<<<"
+ exit
